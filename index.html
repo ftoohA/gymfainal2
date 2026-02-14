@@ -1,33 +1,35 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyBVlppMm6idoEw_cXC78mK1OtGXR4EZgnQ",
-    authDomain: "gymfilna.firebaseapp.com",
-    projectId: "gymfilna",
-    storageBucket: "gymfilna.firebasestorage.app",
-    messagingSenderId: "480525661276",
-    appId: "1:480525661276:web:d010c99b45411e20036299",
-    measurementId: "G-5VSR1732RX"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Workout Tracker Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBVlppMm6idoEw_cXC78mK1OtGXR4EZgnQ",
+      authDomain: "gymfilna.firebaseapp.com",
+      projectId: "gymfilna",
+      storageBucket: "gymfilna.appspot.com",
+      messagingSenderId: "480525661276",
+      appId: "1:480525661276:web:d010c99b45411e20036299",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.db = db;
+    window.collection = collection;
+    window.addDoc = addDoc;
+    window.getDocs = getDocs;
+    window.query = query;
+    window.where = where;
+  </script>
 </head>
 <body class="bg-gradient-to-b from-blue-50 to-blue-100 min-h-screen flex items-center justify-center">
 
@@ -105,32 +107,57 @@
   </div>
 </div>
 
-<script>
-let exercises=JSON.parse(localStorage.getItem("exercises"))||[];
-let workouts=JSON.parse(localStorage.getItem("workouts"))||[];
-let selectedExerciseId=null;
-const days=["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+<script type="module">
+import { db, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-function saveData(){localStorage.setItem("exercises",JSON.stringify(exercises));localStorage.setItem("workouts",JSON.stringify(workouts));}
+let exercises = [];
+let workouts = [];
+let selectedExerciseId = null;
+const days = ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
 
-function showPage(page){
+async function saveExercise(ex) { await addDoc(collection(db,"exercises"),ex); }
+async function saveWorkout(w) { await addDoc(collection(db,"workouts"),w); }
+
+async function loadExercises(){
+  const snap = await getDocs(collection(db,"exercises"));
+  exercises = snap.docs.map(d=>({id:d.id,...d.data()}));
+}
+
+async function loadWorkouts(){
+  const snap = await getDocs(collection(db,"workouts"));
+  workouts = snap.docs.map(d=>({id:d.id,...d.data()}));
+}
+
+async function showPage(page){
   document.getElementById("todayPage").classList.toggle("hidden",page!=='today');
   document.getElementById("managePage").classList.toggle("hidden",page!=='manage');
   document.getElementById("schedulePage").classList.toggle("hidden",page!=='schedule');
+  await loadExercises(); await loadWorkouts();
   if(page==='today') showToday();
   if(page==='manage') showExerciseList();
   if(page==='schedule') showSchedule();
 }
 
-function addExercise(){
-  const name=document.getElementById("exerciseName").value;
-  const day=document.getElementById("exerciseDay").value;
-  const imageInput=document.getElementById("exerciseImage");
+async function addExercise(){
+  const name = document.getElementById("exerciseName").value;
+  const day = document.getElementById("exerciseDay").value;
+  const imageInput = document.getElementById("exerciseImage");
   if(!name) return;
-  const reader=new FileReader();
-  reader.onload=function(e){exercises.push({id:Date.now(),name,day,image:e.target.result}); saveData(); showExerciseList(); showSchedule();};
-  if(imageInput.files[0]) reader.readAsDataURL(imageInput.files[0]);
-  else {exercises.push({id:Date.now(),name,day,image:null}); saveData(); showExerciseList(); showSchedule();}
+  let image = null;
+  if(imageInput.files[0]){
+    const reader = new FileReader();
+    reader.onload = async (e)=>{
+      image = e.target.result;
+      const ex = {name,day,image};
+      await saveExercise(ex);
+      await showPage('manage');
+    };
+    reader.readAsDataURL(imageInput.files[0]);
+  } else {
+    const ex = {name,day,image};
+    await saveExercise(ex);
+    await showPage('manage');
+  }
 }
 
 function showExerciseList(){
@@ -138,12 +165,9 @@ function showExerciseList(){
   exercises.forEach(ex=>{
     div.innerHTML+=`<div class="border p-3 rounded-xl flex justify-between items-center shadow-md hover:shadow-lg transition">
       <div class="flex items-center gap-3 justify-center">${ex.image?`<img src="${ex.image}" class="w-12 h-12 rounded-lg">`:''}<span>${ex.name} - ${days[ex.day]}</span></div>
-      <button onclick="deleteExercise(${ex.id})" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-full transition">حذف</button>
     </div>`;
   });
 }
-
-function deleteExercise(id){exercises=exercises.filter(e=>e.id!==id); workouts=workouts.filter(w=>w.exerciseId!==id); saveData(); showExerciseList(); showSchedule();}
 
 function showToday(){
   const today=new Date().getDay();
@@ -151,7 +175,7 @@ function showToday(){
   exercises.filter(e=>e.day==today).forEach(ex=>{
     const last=workouts.filter(w=>w.exerciseId==ex.id).slice(-1)[0];
     const completed=workouts.some(w=>w.exerciseId==ex.id);
-    div.innerHTML+=`<div id="exercise-${ex.id}" onclick="openModal(${ex.id})" class="border p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-colors shadow-md hover:shadow-xl ${completed?'bg-orange-300':'bg-white'}">
+    div.innerHTML+=`<div id="exercise-${ex.id}" onclick="openModal('${ex.id}')" class="border p-4 rounded-2xl flex items-center gap-4 cursor-pointer transition-colors shadow-md hover:shadow-xl ${completed?'bg-orange-300':'bg-white'}">
       ${ex.image?`<img src="${ex.image}" class="w-20 h-20 rounded-lg">`:''}
       <div><div class="font-bold text-lg">${ex.name}</div><div class="text-gray-600 mt-1">${last?`آخر وزن: ${last.weight}kg × ${last.reps}`:'لا يوجد سجل'}</div></div>
     </div>`;
@@ -174,18 +198,18 @@ function openModal(id){
   const historyDiv=document.getElementById("modalHistory");
   const history=workouts.filter(w=>w.exerciseId===id);
   historyDiv.innerHTML=history.map(w=>`<div>${w.date} - ${w.weight}kg × ${w.reps}</div>`).join('');
-  document.getElementById("modal").classList.remove("hidden");
-  document.getElementById("modal").classList.add("flex");
+  document.getElementById("modal").classList.remove("hidden"); document.getElementById("modal").classList.add("flex");
 }
 
 function closeModal(){document.getElementById("modal").classList.add("hidden");}
 
-function saveWeight(){
+async function saveWeight(){
   const weight=document.getElementById("newWeight").value;
   const reps=document.getElementById("newReps").value;
   if(!weight) return;
-  workouts.push({exerciseId:selectedExerciseId,weight,reps,date:new Date().toISOString().split('T')[0]});
-  saveData(); closeModal(); showToday();
+  const w = {exerciseId:selectedExerciseId,weight,reps,date:new Date().toISOString().split('T')[0]};
+  await saveWorkout(w);
+  closeModal(); await showPage('today');
 }
 
 function openImageModal(src){
@@ -199,7 +223,8 @@ function closeImageModal(){
   document.getElementById('imageModal').classList.add('hidden');
 }
 
-showToday();
+showPage('today');
 </script>
+
 </body>
 </html>
